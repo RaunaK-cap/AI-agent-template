@@ -1,12 +1,12 @@
-import { Agent, run } from '@openai/agents';
+import { Agent, run  , MemorySession  ,} from '@openai/agents';
 import { hackathonTools } from './tools/index.ts';
 
 /**
  * The main agent for the hackathon project.
- *
  * Change the name, instructions, model, and tools here once the product idea
  * is decided. Keep secrets in .env, never in this file.
  */
+
 export const hackathonAgent = new Agent({
   name: 'Hackathon Assistant',
   instructions: `
@@ -21,7 +21,16 @@ voice, tool-use rules, and success criteria.
   // Leave this unset to use the Agents SDK default model, or configure it in .env.
   model: process.env.OPENAI_MODEL,
   tools: hackathonTools,
+  inputGuardrails: [ ],
+  mcpConfig: {},
+  modelSettings:{},
+  outputGuardrails:[],
+  mcpServers:[],
+  
+  // few features that will come to help in future while building 
+  
 });
+
 
 export async function askAgent(message: string) {
   const result = await run(hackathonAgent, message);

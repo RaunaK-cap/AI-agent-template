@@ -6,26 +6,26 @@ const port = Number(process.env.PORT ?? 3000);
 export function createApp() {
   const app = express();
 
-  app.use(express.json({ limit: '1mb' }));
+  app.use(express.json());
 
-  app.get('/health', (_request, response) => {
-    response.json({ status: 'ok' });
+  app.get('/health', (req, res) => {
+    res.json({ status: 'ok' });
   });
 
-  app.post('/api/chat', async (request, response) => {
-    const { message } = request.body as { message?: unknown };
+  app.post('/api/chat', async (req, res) => {
+    const { message } = req.body as { message?: unknown };
 
     if (typeof message !== 'string' || message.trim().length === 0) {
-      response.status(400).json({ error: 'message must be a non-empty string' });
+      res.status(400).json({ error: 'message must be a non-empty string' });
       return;
     }
 
     try {
       const result = await askAgent(message.trim());
-      response.json(result);
+      res.json(result);
     } catch (error) {
       console.error('Agent run failed:', error);
-      response.status(500).json({ error: 'Unable to run the agent' });
+      res.status(500).json({ error: 'Unable to run the agent' });
     }
   });
 
@@ -39,7 +39,7 @@ export function startServer() {
   }
 
   const server = createApp().listen(port, () => {
-    console.log(`Hackathon agent API listening on http://localhost:${port}`);
+    console.log(`AI agent API listening on http://localhost:${port}`);
   });
 
   // Bun can otherwise let the event loop finish after module evaluation.
