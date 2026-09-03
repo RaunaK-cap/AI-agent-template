@@ -1,0 +1,5 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>ChatKit entry point</title></head><body>
+<h1>ChatKit entry point</h1><p>This page is ready to host ChatKit, but it needs a compatible ChatKit server URL. The Bun Agents SDK server uses a different API protocol, so it cannot be pointed here directly.</p><p>After you add a ChatKit-compatible backend or OpenAI-hosted Agent Builder workflow, replace <code>YOUR_CHATKIT_SERVER_URL</code>.</p><div id="chat-root"></div>
+<script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script><script type="module">const url='YOUR_CHATKIT_SERVER_URL';if(url!=='YOUR_CHATKIT_SERVER_URL'){const chatkit=document.createElement('openai-chatkit');chatkit.setOptions({api:{url,domainKey:'local-dev'}});document.querySelector('#chat-root').append(chatkit)}</script>
+</body></html>

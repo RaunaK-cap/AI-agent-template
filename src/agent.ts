@@ -1,42 +1,72 @@
-import { Agent, run  , MemorySession  ,} from '@openai/agents';
-import { hackathonTools } from './tools/index.ts';
+import {
+  Agent,
+  MemorySession,
+  Runner,
+} from '@openai/agents';
+import type { InputGuardrail, OutputGuardrail } from '@openai/agents';
+import { z } from 'zod';
+import { demoTools } from './tools/index.ts';
 
-/**
- * The main agent for the hackathon project.
- * Change the name, instructions, model, and tools here once the product idea
- * is decided. Keep secrets in .env, never in this file.
- */
+export type DemoContext = { userId: string; sessionId: string };
 
-export const hackathonAgent = new Agent({
-  name: 'Hackathon Assistant',
-  instructions: `
-You are the assistant for an AI hackathon project.
+const sessions = new Map<string, MemorySession>();
 
-The product is still being designed. Be helpful, concise, and transparent about
-what you can and cannot do. Use a tool when it is relevant and available.
+/** DEMO ONLY: this disappears after a restart. Replace it with your DB Session. */
+export function getSession(sessionId: string) {
+  let session = sessions.get(sessionId);
+  if (!session) {
+    session = new MemorySession({ sessionId });
+    sessions.set(sessionId, session);
+  }
+  return session;
+}
 
-TODO: Replace these instructions with the agent's real role, boundaries,
-voice, tool-use rules, and success criteria.
-  `.trim(),
-  // Leave this unset to use the Agents SDK default model, or configure it in .env.
-  model: process.env.OPENAI_MODEL,
-  tools: hackathonTools,
-  inputGuardrails: [ ],
-  mcpConfig: {},
-  modelSettings:{},
-  outputGuardrails:[],
-  mcpServers:[],
-  
-  // few features that will come to help in future while building 
-  
+const responseSchema = z.object({
+  answer: z.string().describe('The helpful response for the user.'),
+  suggestedNextStep: z.string().nullable().describe('One optional next action.'),
 });
 
+const inputSafety: InputGuardrail = {
+  name: 'block_prompt_injection_demo',
+  runInParallel: false,
+  execute: async ({ input }) => {
+    const text = typeof input === 'string' ? input : JSON.stringify(input);
+    return {
+      tripwireTriggered: /ignore (all |the )?(previous|system) instructions|reveal .*api key/i.test(text),
+      outputInfo: { rule: 'basic prompt-injection demonstration' },
+    };
+  },
+};
 
-export async function askAgent(message: string) {
-  const result = await run(hackathonAgent, message);
+const outputSafety: OutputGuardrail<typeof responseSchema, DemoContext> = {
+  name: 'block_secret_like_output_demo',
+  execute: async ({ agentOutput }) => ({
+    tripwireTriggered: /sk-[a-zA-Z0-9_-]{12,}/.test(JSON.stringify(agentOutput)),
+    outputInfo: { rule: 'basic secret-leak demonstration' },
+  }),
+};
 
-  return {
-    output: result.finalOutput ?? '',
-    agent: result.lastAgent?.name ?? hackathonAgent.name,
-  };
+export const demoAgent = new Agent<DemoContext, typeof responseSchema>({
+  name: 'Agent SDK Showcase',
+  instructions: `You are a helpful assistant inside an OpenAI Agents SDK feature showcase.
+Use tools when useful. The save_note tool requires human approval. Never claim it
+saved anything until the tool has completed. Return concise structured output.`,
+  model: process.env.OPENAI_MODEL,
+  tools: demoTools,
+  inputGuardrails: [inputSafety],
+  outputGuardrails: [outputSafety],
+  outputType: responseSchema,
+});
+
+/** Reuse one Runner for shared tracing and execution configuration. */
+export const runner = new Runner({
+  workflowName: 'agent-sdk-showcase',
+  traceMetadata: { app: 'agent-sdk-showcase' },
+  toolExecution: { maxFunctionToolConcurrency: 3, preApprovalInputGuardrails: true },
+});
+
+export function displayOutput(output: unknown) {
+  if (typeof output === 'string') return output;
+  if (output && typeof output === 'object' && 'answer' in output) return String(output.answer);
+  return JSON.stringify(output);
 }

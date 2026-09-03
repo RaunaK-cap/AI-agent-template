@@ -1,41 +1,51 @@
-# AI Hackathon Agent Starter
+# OpenAI Agents SDK Showcase
 
-A minimal Bun + Express API using the [OpenAI Agents SDK](https://openai.github.io/openai-agents-js/). It starts with one agent and leaves intentional extension points for tools, prompts, routes, memory, and multi-agent orchestration.
+A Bun + Express project that demonstrates the core Agents SDK building blocks without a database or any external business integration.
 
-## Run it
+## Included
 
-1. Copy the environment template and add your API key:
+- Typed agent with structured output
+- Three sample function tools
+- Input, output, and tool guardrails
+- Human approval before a state-changing tool
+- In-memory `MemorySession` chat memory
+- Reusable `Runner` with tracing metadata
+- REST chat endpoint, approval endpoint, and full SDK streaming endpoint
+- A tiny working browser demo at `/`
+- A separate ChatKit entry point at `/chatkit.html`
 
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Put a real `OPENAI_API_KEY` in `.env`.
-
-3. Start the API:
-
-   ```bash
-   bun run dev
-   ```
-
-The API is available at `http://localhost:3000`.
-
-## Try it
+## Start
 
 ```bash
-curl http://localhost:3000/health
-
-curl -X POST http://localhost:3000/api/chat \\
-  -H 'Content-Type: application/json' \\
-  -d '{"message":"Help me brainstorm an AI hackathon idea."}'
+cp .env.example .env
+# Add OPENAI_API_KEY to .env
+bun run dev
 ```
 
-## Where to customize
+Open [http://localhost:3000](http://localhost:3000).
 
-- `src/agent.ts` — the agent's name, instructions, model, and future handoffs.
-- `src/tools/index.ts` — add function tools with Zod schemas.
-- `src/server.ts` — add routes, authentication, webhooks, and file handling.
+Try these prompts:
 
-## Notes
+```text
+What time is it in Asia/Kolkata?
+Save a note titled SDK idea with body Add a database later.
+List my notes.
+```
 
-`POST /api/chat` is intentionally stateless for now. Once we decide the product, we can add conversation memory, streaming responses, guardrails, authentication, a database, or specialist agents.
+The second prompt pauses at an approval card. Approve it, then ask the agent to list notes. Notes and conversation memory are in-process only and disappear on restart.
+
+## Important files
+
+- `src/agent.ts` — agent, structured output, guardrails, sessions, Runner/tracing.
+- `src/tools/index.ts` — safe sample tools and a tool guardrail.
+- `src/server.ts` — REST API, in-memory approval state, and streaming endpoint.
+- `public/index.html` — working showcase UI.
+- `public/chatkit.html` — ChatKit frontend insertion point.
+
+## Database hooks
+
+Search for `TODO:`. The main future replacement points are `getSession()` in `src/agent.ts`, the notes array in `src/tools/index.ts`, and the pending approval map in `src/server.ts`.
+
+## ChatKit note
+
+ChatKit supplies a frontend chat component but its self-hosted runtime uses a separate backend protocol. The included `chatkit.html` deliberately does not point at this Express app. Configure it only after you add a compatible ChatKit server or an OpenAI-hosted Agent Builder workflow. Until then, the fully functional SDK demo is at `/`.

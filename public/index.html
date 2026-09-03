@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Agents SDK Showcase</title><style>
+body{font-family:system-ui,sans-serif;background:#0b1020;color:#eef2ff;margin:0}main{max-width:800px;margin:auto;padding:32px 20px}.card{background:#151c33;border:1px solid #293553;border-radius:12px;padding:18px;margin:16px 0}#messages{min-height:260px;white-space:pre-wrap}.user{color:#9cc3ff}.agent{color:#c4f5d4}.event{color:#b4bdd6;font-size:.9rem}textarea,button{font:inherit}textarea{width:100%;box-sizing:border-box;padding:12px;min-height:80px}button{background:#6d7cff;color:#fff;border:0;border-radius:8px;padding:10px 14px;cursor:pointer;margin-top:10px}#approval{display:none;border-color:#f4c95d}code{color:#f4c95d}
+</style></head><body><main>
+<h1>OpenAI Agents SDK Showcase</h1><p>In-memory session, structured output, tools, guardrails, approval flow, and tracing.</p>
+<div id="messages" class="card"></div><div id="approval" class="card"><strong>Approval required</strong><pre id="approval-details"></pre><button id="approve">Approve</button><button id="reject">Reject</button></div>
+<form id="chat-form" class="card"><label for="message">Try: “What time is it?” or “Save a note titled Idea with body Learn the SDK.”</label><textarea id="message" required></textarea><button>Send</button></form>
+</main><script>
+const sessionId=crypto.randomUUID();let approvalId=null;const messages=document.querySelector('#messages'),approval=document.querySelector('#approval'),approvalDetails=document.querySelector('#approval-details');
+function add(text,className){const entry=document.createElement('div');entry.className=className;entry.textContent=text;messages.append(entry)}
+document.querySelector('#chat-form').addEventListener('submit',async event=>{event.preventDefault();const textarea=document.querySelector('#message'),message=textarea.value.trim();if(!message)return;textarea.value='';add('You: '+message,'user');const result=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message,sessionId})});const data=await result.json();if(data.status==='awaiting_approval'){approvalId=data.approvalId;approvalDetails.textContent=JSON.stringify(data.approvals,null,2);approval.style.display='block'}else if(data.output)add('Agent: '+data.output,'agent');else add('Error: '+(data.error||'Unknown error'),'event')});
+async function resolveApproval(decision){const result=await fetch('/api/approvals/'+approvalId,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({decision})});const data=await result.json();approval.style.display='none';approvalId=null;add('Agent: '+(data.output||data.error),data.error?'event':'agent')}
+document.querySelector('#approve').onclick=()=>resolveApproval('approve');document.querySelector('#reject').onclick=()=>resolveApproval('reject');
+</script></body></html>
