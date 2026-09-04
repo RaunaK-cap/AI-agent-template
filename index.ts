@@ -1,7 +1,25 @@
-import { startServer } from './src/server.ts';
+import express from "express"
+import dotenv from "dotenv"
 
-// Keep the server reference alive for Bun's event loop.
-const server = startServer();
+dotenv.config()
 
-process.on('SIGTERM', () => server.close());
-process.on('SIGINT', () => server.close());
+const app = express()
+const PORT = process.env.PORT!
+app.use(express.json())
+
+
+
+app.get("/health" , (req, res)=>{
+    res.json({
+        message:"api is working"
+    })
+})
+
+app.post("/api/chat/stream", (req , res)=>{
+
+})
+
+
+app.listen(PORT , ()=>{
+    console.log(` server is running on http://localhost:${PORT}`)
+})
