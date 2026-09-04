@@ -26,31 +26,39 @@ export function createApp() {
 
   app.get('/health', (_request, response) => response.json({ status: 'ok' }));
 
-  app.post('/api/chat', async (request, response) => {
-    const { message, sessionId: rawSessionId } = request.body as { message?: unknown; sessionId?: unknown };
+  app.post('/api/chat', async (req, res) => {
+
+    const { message, sessionId: rawSessionId } = req.body
+
     if (typeof message !== 'string' || !message.trim()) {
-      response.status(400).json({ error: 'message must be a non-empty string' });
+      res.status(400).json({ error: 'message must be a non-empty string' });
       return;
     }
+
     const sessionId = sessionIdFrom(rawSessionId);
     const context: DemoContext = { userId: 'demo-user', sessionId };
+
     try {
+
       const result = await runner.run(demoAgent, message.trim(), { context, session: getSession(sessionId) });
+
       if (result.interruptions?.length) {
+
         const approvalId = randomUUID();
+        
         pendingRuns.set(approvalId, { state: result.state, sessionId });
-        response.status(202).json({
+        res.status(202).json({
           status: 'awaiting_approval', approvalId, approvals: result.interruptions.map(approvalPayload),
         });
         return;
       }
-      response.json({
+      res.json({
         status: 'completed', output: displayOutput(result.finalOutput), rawOutput: result.finalOutput,
         agent: result.lastAgent?.name ?? demoAgent.name, usage: result.state.usage,
       });
     } catch (error) {
       console.error('Agent run failed:', error);
-      response.status(500).json({ error: 'Unable to run the agent' });
+      res.status(500).json({ error: 'Unable to run the agent' });
     }
   });
 
@@ -81,37 +89,37 @@ export function createApp() {
   });
 
   /** Full SDK event stream for custom UIs; see ChatKit note in README. */
-  app.post('/api/chat/stream', async (request, response) => {
-    const { message, sessionId: rawSessionId } = request.body as { message?: unknown; sessionId?: unknown };
+  app.post('/api/chat/stream', async (req, res) => {
+
+    const { message, sessionId: rawSessionId } = req.body ;
     if (typeof message !== 'string' || !message.trim()) {
-      response.status(400).json({ error: 'message must be a non-empty string' });
+      res.status(400).json({ error: 'message must be a non-empty string' });
       return;
     }
     const sessionId = sessionIdFrom(rawSessionId);
-    response.setHeader('Content-Type', 'text/event-stream');
-    response.setHeader('Cache-Control', 'no-cache');
-    response.setHeader('Connection', 'keep-alive');
-    response.flushHeaders();
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
     try {
       const stream = await runner.run(demoAgent, message.trim(), {
         stream: true, context: { userId: 'demo-user', sessionId }, session: getSession(sessionId),
       });
       for await (const event of stream) {
-        response.write(`event: agent-event\ndata: ${JSON.stringify({ type: event.type })}\n\n`);
+        res.write(`event: agent-event\ndata: ${JSON.stringify({ type: event.type })}\n\n`);
       }
       await stream.completed;
-      response.write(`event: completed\ndata: ${JSON.stringify({
+      res.write(`event: completed\ndata: ${JSON.stringify({
         output: displayOutput(stream.finalOutput), rawOutput: stream.finalOutput,
         interruptions: stream.interruptions?.map(approvalPayload) ?? [],
       })}\n\n`);
     } catch (error) {
-      response.write(`event: error\ndata: ${JSON.stringify({ error: String(error) })}\n\n`);
+      res.write(`event: error\ndata: ${JSON.stringify({ error: String(error) })}\n\n`);
     } finally {
-      response.end();
+      res.end();
     }
   });
 
-  // TODO: Add auth plus database-backed sessions and approval persistence here.
   return app;
 }
 
