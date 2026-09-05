@@ -24,7 +24,7 @@ export function createApp() {
   app.use(express.json({ limit: '1mb' }));
   app.use(express.static('public'));
 
-  app.get('/health', (_request, response) => response.json({ status: 'ok' }));
+  app.get('/health', (req , res) => res.json({ status: 'ok' }));
 
   app.post('/api/chat', async (req, res) => {
 
@@ -62,45 +62,48 @@ export function createApp() {
     }
   });
 
-  app.post('/api/approvals/:approvalId', async (request, response) => {
+  app.post('/api/approvals/:approvalId', async (req, res) => {
     const pending = pendingRuns.get(request.params.approvalId);
-    const { decision } = request.body as { decision?: unknown };
+    const { decision } = req.body;
     if (!pending || (decision !== 'approve' && decision !== 'reject')) {
-      response.status(400).json({ error: 'Unknown approval or invalid decision' });
+      res.status(400).json({ error: 'Unknown approval or invalid decision' });
       return;
     }
     for (const interruption of pending.state.getInterruptions()) {
       if (decision === 'approve') pending.state.approve(interruption);
       else pending.state.reject(interruption, { message: 'The user rejected this action.' });
     }
-    pendingRuns.delete(request.params.approvalId);
+    pendingRuns.delete(req.params.approvalId);
     try {
       const result = await runner.run(demoAgent, pending.state, {
         context: { userId: 'demo-user', sessionId: pending.sessionId }, session: getSession(pending.sessionId),
       });
-      response.json({
+      res.json({
         status: result.interruptions?.length ? 'awaiting_approval' : 'completed',
         output: displayOutput(result.finalOutput), rawOutput: result.finalOutput,
       });
     } catch (error) {
       console.error('Approval continuation failed:', error);
-      response.status(500).json({ error: 'Unable to continue the agent run' });
+      res.status(500).json({ error: 'Unable to continue the agent run' });
     }
   });
 
   /** Full SDK event stream for custom UIs; see ChatKit note in README. */
   app.post('/api/chat/stream', async (req, res) => {
-
+ 
     const { message, sessionId: rawSessionId } = req.body ;
+
     if (typeof message !== 'string' || !message.trim()) {
       res.status(400).json({ error: 'message must be a non-empty string' });
       return;
     }
+
     const sessionId = sessionIdFrom(rawSessionId);
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
+
     try {
       const stream = await runner.run(demoAgent, message.trim(), {
         stream: true, context: { userId: 'demo-user', sessionId }, session: getSession(sessionId),

@@ -7,7 +7,6 @@ import type { InputGuardrail, OutputGuardrail } from '@openai/agents';
 import { z } from 'zod';
 import { demoTools } from './tools/index.ts';
 
-export type DemoContext = { userId: string; sessionId: string };
 
 const sessions = new Map<string, MemorySession>();
 
@@ -21,10 +20,6 @@ export function getSession(sessionId: string) {
   return session;
 }
 
-const responseSchema = z.object({
-  answer: z.string().describe('The helpful response for the user.'),
-  suggestedNextStep: z.string().nullable().describe('One optional next action.'),
-});
 
 const inputSafety: InputGuardrail = {
   name: 'block_prompt_injection_demo',
@@ -38,7 +33,7 @@ const inputSafety: InputGuardrail = {
   },
 };
 
-const outputSafety: OutputGuardrail<typeof responseSchema, DemoContext> = {
+const outputSafety: OutputGuardrail = {
   name: 'block_secret_like_output_demo',
   execute: async ({ agentOutput }) => ({
     tripwireTriggered: /sk-[a-zA-Z0-9_-]{12,}/.test(JSON.stringify(agentOutput)),
@@ -46,7 +41,7 @@ const outputSafety: OutputGuardrail<typeof responseSchema, DemoContext> = {
   }),
 };
 
-export const demoAgent = new Agent<DemoContext, typeof responseSchema>({
+export const demoAgent = new Agent({
   name: 'Agent SDK Showcase',
   instructions: `You are a helpful assistant inside an OpenAI Agents SDK feature showcase.
 Use tools when useful. The save_note tool requires human approval. Never claim it
@@ -55,7 +50,7 @@ saved anything until the tool has completed. Return concise structured output.`,
   tools: demoTools,
   inputGuardrails: [inputSafety],
   outputGuardrails: [outputSafety],
-  outputType: responseSchema,
+  outputType: ,
 });
 
 /** Reuse one Runner for shared tracing and execution configuration. */
