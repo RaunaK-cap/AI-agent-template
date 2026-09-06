@@ -22,16 +22,24 @@ interface ChatMsg {
   files?: string[];
 }
 
-export function ChatPanel({ logs, className, scrollClassName }: { logs: LiveLogs; className?: string; scrollClassName?: string }) {
-  // Local transcript. Replace echo with fetch("/api/chat") in production.
+// simple props: parent can give real stream handler
+interface ChatPanelProps {
+  logs: LiveLogs;
+  className?: string;
+  scrollClassName?: string;
+  onStreamChat?: (message: string, onDelta: (delta: string) => void, onDone: (text: string) => void) => Promise<void>;
+}
+
+export function ChatPanel({ logs, className, scrollClassName, onStreamChat }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMsg[]>([
     { id: "seed", role: "agent", text: "Connected. Ask about run #4821 or upload a statement CSV." },
   ]);
   const [draft, setDraft] = useState("");
   const [files, setFiles] = useState<string[]>([]);
+  const [streamingId, setStreamingId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const send = () => {
+  const send = async () => {
     const text = draft.trim();
     if (!text && files.length === 0) return;
     const user: ChatMsg = {
@@ -40,20 +48,45 @@ export function ChatPanel({ logs, className, scrollClassName }: { logs: LiveLogs
       text: text || "(files only)",
       files: [...files],
     };
-    // Mirror into the live log stream so chat + logs tell one story.
     logs.push("chat", `user: ${user.text}${files.length ? ` +${files.length} file(s)` : ""}`);
+    setMessages((m) => [...m, user]);
+    setDraft("");
+    setFiles([]);
+
+    // if parent gave real streaming function, use it
+    if (onStreamChat) {
+      const agentId = `a-${Date.now()}`;
+      setMessages((m) => [...m, { id: agentId, role: "agent", text: "" }]);
+      setStreamingId(agentId);
+      try {
+        await onStreamChat(
+          text,
+          (delta) => {
+            // delta comes piece by piece
+            setMessages((m) => m.map((msg) => (msg.id === agentId ? { ...msg, text: msg.text + delta } : msg)));
+          },
+          (finalText) => {
+            if (finalText) setMessages((m) => m.map((msg) => (msg.id === agentId ? { ...msg, text: finalText } : msg)));
+            setStreamingId(null);
+          },
+        );
+      } catch {
+        setMessages((m) => m.map((msg) => (msg.id === agentId ? { ...msg, text: "error connecting to backend" } : msg)));
+        setStreamingId(null);
+      }
+      return;
+    }
+
+    // fallback mock if no backend
     logs.push("agent-event", "agent thinking… (wire /api/chat here)");
     setMessages((m) => [
       ...m,
-      user,
       {
         id: `a-${Date.now()}`,
         role: "agent",
-        text: "Noted. Backend not wired in this template — connect POST /api/chat to stream the real answer here.",
+        text: "Noted. Backend not wired — set NEXT_PUBLIC_API_URL to connect.",
       },
     ]);
-    setDraft("");
-    setFiles([]);
   };
 
   // keep scroller pinned to latest message (internal scroll)
