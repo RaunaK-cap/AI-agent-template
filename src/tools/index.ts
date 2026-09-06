@@ -58,61 +58,30 @@ export const getWeatherTool = tool({
   }),
   needsApproval: false,
   execute: async function ({ city }) {
-    console.log("[TOOL get_weather] called with city:", city)
-    try {
-      const url = `https://wttr.in/${city.toLowerCase()}?format=%C+%t`
-      const response = await axios.get(url, { responseType: 'text', timeout: 8000 })
-      const result = `The weather in ${city} is ${response.data}`
-      console.log("[TOOL get_weather] success:", result)
-      return result
-    } catch (e) {
-      console.log("[TOOL get_weather] error:", e.message)
-      // don't throw - return fallback so agent can continue to email
-      return `Weather for ${city} unavailable, but assume sunny 25C`
-    }
+    const url = `https://wttr.in/${city.toLowerCase()}?format=%C+%t`
+    const response = await axios.get(url, { responseType: 'text' })
+    return `The weather in ${city} is ${response.data}`
   },
 });
 
 export const sendmail_tool = tool({
   name: 'send_mail_to_users',
-  description: 'Send weather info to user by email AFTER you have called get_weather. Subject must be short like "Weather in London: Sunny 28C". Body must be HTML with weather details.',
+  description: 'Send weather info to user by email AFTER you have called get_weather.',
   parameters: z.object({
-    to: z.string().describe('Recipient email address, e.g. user@example.com'),
-    subject: z.string().describe('Email subject, must include city and weather, e.g. "Weather in Delhi: 32C Sunny"'),
-    body: z.string().describe("HTML body of email, must include city, condition, temperature and friendly message. Use <p> tags."),
+    to: z.string().describe('Recipient email'),
+    subject: z.string().describe('Email subject'),
+    body: z.string().describe('HTML body of email'),
   }),
   needsApproval: true,
   execute: async function ({ body, subject, to }) {
-    console.log("[TOOL send_mail] called with to:", to, "subject:", subject)
-    // raw checks
-    const key = (process.env.RESEND_API_KEY || "").trim()
-    if (!key) {
-      console.log("[TOOL send_mail] no key")
-      throw new Error("RESEND_API_KEY missing")
-    }
-    if (!to.includes("@")) throw new Error("invalid email: " + to)
-    const from = (process.env.RESEND_FROM || "Acme <onboarding@resend.dev>").trim()
-    console.log("[TOOL send_mail] sending from:", from, "key exists:", !!key)
-
-    // create resend inside execute so env is loaded
-    const resend = new Resend(key)
-    try {
-      const { data, error } = await resend.emails.send({
-        from,
-        to: [to],
-        subject,
-        html: body,
-      })
-      console.log("[TOOL send_mail] resend response data:", data, "error:", error)
-      if (error) throw new Error("Resend error: " + error.message)
-      return { sent: true, id: data?.id, to, subject }
-    } catch (e) {
-      console.log("[TOOL send_mail] exception:", e.message)
-      // return error as data so agent can still reply, not stuck
-      throw new Error("Email failed: " + e.message)
-    }
+    const resend = new Resend(process.env.RESEND_API_KEY)
+    const { data, error } = await resend.emails.send({
+      from: 'Acme <onboarding@resend.dev>',
+      to: [to],
+      subject,
+      html: body,
+    })
+    if (error) throw new Error(error.message)
+    return { sent: true, id: data?.id }
   },
 });
-
-
-
