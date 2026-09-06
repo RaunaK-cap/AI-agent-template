@@ -6,7 +6,7 @@
 // POST text + files to your /api/chat endpoint later (see onSend seam).
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Paperclip, PaperPlaneRight, X } from "@phosphor-icons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ interface ChatMsg {
   files?: string[];
 }
 
-export function ChatPanel({ logs }: { logs: LiveLogs }) {
+export function ChatPanel({ logs, className, scrollClassName }: { logs: LiveLogs; className?: string; scrollClassName?: string }) {
   // Local transcript. Replace echo with fetch("/api/chat") in production.
   const [messages, setMessages] = useState<ChatMsg[]>([
     { id: "seed", role: "agent", text: "Connected. Ask about run #4821 or upload a statement CSV." },
@@ -56,14 +56,23 @@ export function ChatPanel({ logs }: { logs: LiveLogs }) {
     setFiles([]);
   };
 
+  // keep scroller pinned to latest message (internal scroll)
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scrollRef.current?.closest('[data-slot="scroll-area"]')?.querySelector(
+      '[data-slot="scroll-area-viewport"]',
+    ) as HTMLElement | null;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages.length]);
+
   return (
-    <Card className="flex min-h-0 flex-1 flex-col">
-      <CardHeader>
+    <Card className={`flex min-h-0 flex-1 flex-col overflow-hidden ${className ?? ""}`}>
+      <CardHeader className="shrink-0">
         <CardTitle className="font-mono text-xs">agent chat</CardTitle>
       </CardHeader>
-      <CardContent className="flex min-h-0 flex-1 flex-col gap-2">
-        <ScrollArea className="h-64 flex-1 rounded-none border p-2">
-          <div className="flex flex-col gap-2">
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+        <ScrollArea className={scrollClassName ?? "h-64 flex-1 rounded-none border p-2"}>
+          <div ref={scrollRef} className="flex flex-col gap-2">
             {messages.map((m) => (
               <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
@@ -85,7 +94,7 @@ export function ChatPanel({ logs }: { logs: LiveLogs }) {
 
         {/* Attachment chips (pending upload) */}
         {files.length > 0 ? (
-          <div className="flex flex-wrap gap-1">
+          <div className="flex shrink-0 flex-wrap gap-1">
             {files.map((f) => (
               <Badge key={f} variant="secondary" className="font-mono text-[10px]">
                 {f}
@@ -101,8 +110,8 @@ export function ChatPanel({ logs }: { logs: LiveLogs }) {
           </div>
         ) : null}
 
-        {/* Composer: file button + textarea + send. Enter sends, Shift+Enter newline. */}
-        <div className="flex items-end gap-1.5">
+        {/* Composer: fixed at bottom, input bar */}
+        <div className="flex shrink-0 items-end gap-1.5 border-t bg-card pt-2">
           <input
             ref={fileRef}
             type="file"

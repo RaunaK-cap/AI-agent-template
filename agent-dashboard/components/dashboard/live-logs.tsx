@@ -10,10 +10,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { LiveLogs } from "@/lib/use-live-logs";
 
-export function LiveLogStream({ logs }: { logs: LiveLogs }) {
+export function LiveLogStream({
+  logs,
+  className,
+  scrollClassName,
+}: {
+  logs: LiveLogs;
+  className?: string;
+  scrollClassName?: string;
+}) {
   return (
-    <Card className="flex min-h-0 flex-1 flex-col">
-      <CardHeader>
+    <Card className={`flex min-h-0 flex-1 flex-col overflow-hidden ${className ?? ""}`}>
+      <CardHeader className="shrink-0">
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="font-mono text-xs">
             live logs{" "}
@@ -36,8 +44,8 @@ export function LiveLogStream({ logs }: { logs: LiveLogs }) {
           </div>
         </div>
       </CardHeader>
-      <CardContent className="min-h-0 flex-1">
-        <ScrollArea className="h-56 rounded-none border bg-muted/30 p-2">
+      <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <ScrollArea className={scrollClassName ?? "h-56 flex-1 rounded-none border bg-muted/30 p-2"}>
           <div className="flex flex-col gap-1">
             {logs.lines.length === 0 ? (
               <p className="font-mono text-[11px] text-muted-foreground">
