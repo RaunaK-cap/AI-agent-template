@@ -50,7 +50,7 @@ saved anything until the tool has completed. Return concise structured output.`,
   tools: demoTools,
   inputGuardrails: [inputSafety],
   outputGuardrails: [outputSafety],
-  outputType: ,
+
 });
 
 /** Reuse one Runner for shared tracing and execution configuration. */
