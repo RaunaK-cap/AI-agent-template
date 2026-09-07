@@ -10,7 +10,7 @@ A Bun + Express project that demonstrates the core Agents SDK building blocks wi
 - Human approval before a state-changing tool
 - In-memory `MemorySession` chat memory
 - Reusable `Runner` with tracing metadata
-- REST chat endpoint, approval endpoint, and full SDK streaming endpoint
+- REST chat endpoint and a resumable approval endpoint (each request closes cleanly)
 - A tiny working browser demo at `/`
 - A separate ChatKit entry point at `/chatkit.html`
 

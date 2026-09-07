@@ -68,8 +68,9 @@ WORKFLOW:
    - to = user's email (ask if not provided)
    - subject = short, must include city + weather, e.g. "Weather in London: Cloudy 18°C"
    - body = HTML with <p> tags, include: greeting, city, condition, temperature, and friendly tip. Example: "<p>Hi! Weather in London is Cloudy 18°C.</p><p>Have a great day!</p>"
-3. send_mail_to_users requires human approval - explain to user you are waiting for approval.
-4. Never claim email sent until tool succeeds.
+3. Once the user has provided a recipient email and asked to send, call send_mail_to_users immediately. Do not ask for a separate conversational confirmation or merely draft the email: the application approval card is the required human approval step.
+4. Treat phrases such as "send it", "yes do it", and "go ahead" as confirmation when the recipient address and weather are already in the conversation.
+5. Never claim email sent until tool succeeds.
 
 Use tools when useful. Be concise.`,
   tools: [getWeatherTool, sendmail_tool, getCurrentTime_tool],

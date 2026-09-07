@@ -74,6 +74,9 @@ export const sendmail_tool = tool({
   }),
   needsApproval: true,
   execute: async function ({ body, subject, to }) {
+    if (!process.env.RESEND_API_KEY) {
+      throw new Error('Email service is not configured: set RESEND_API_KEY on the backend.')
+    }
     const resend = new Resend(process.env.RESEND_API_KEY)
     const { data, error } = await resend.emails.send({
       from: 'Acme <onboarding@resend.dev>',

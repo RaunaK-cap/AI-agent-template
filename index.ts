@@ -16,7 +16,7 @@ app.use((req, res, next) => {
   next()
 })
 
-const waiting = new Map() // waitId -> {state, res, chatId}
+const waiting = new Map() // waitId -> {state, chatId}
 const history = new Map() // chatId -> {logs:[], traces:[]}
 
 function getBox(chatId) {
@@ -29,51 +29,53 @@ app.get("/health", (req, res) => {
   res.json({ message: "api is working" })
 })
 
-// chat stream - simple JSON lines, no event/data
-app.post("/api/chat/stream", async (req, res) => {
-  console.log("[chat/stream] body:", req.body)
-  res.writeHead(200, { "Content-Type": "text/plain", "Cache-Control": "no-cache", "Connection": "keep-alive" })
-  // simple send: one JSON per line
-  const send = (obj) => {
-    console.log("[stream]", obj)
-    res.write(JSON.stringify(obj) + "\n")
+function approvalPayload(waitId, item) {
+  return {
+    status: "awaiting_approval",
+    approval: {
+      id: waitId,
+      toolName: item.name,
+      arguments: item.arguments,
+    },
   }
+}
+
+// A completed HTTP request represents one completed agent state: either an
+// answer or a paused tool approval. Never keep a browser request open while
+// waiting for a person to decide; browsers, proxies, and React state can all
+// otherwise leave the chat in a permanent loading state.
+app.post("/api/chat", async (req, res) => {
   const chatId = req.body.chatId || "demo"
-  const message = req.body.message
-  if (!message) { send({ type: "error", message: "need message" }); return res.end() }
+  const message = typeof req.body.message === "string" ? req.body.message.trim() : ""
+  if (!message) return res.status(400).json({ error: "message is required" })
 
   const box = getBox(chatId)
   box.logs.push({ source: "user", text: message })
-  send({ type: "log", source: "user", text: message })
-
   try {
-    const stream = await runner.run(demoAgent, message, { stream: true, session: getSession(chatId) })
-    for await (const ev of stream) {
-      if (ev.type === "raw_model_stream_event" && ev.data.delta) {
-        send({ type: "chat_delta", text: ev.data.delta })
-      }
-      if (ev.type === "run_item_stream_event" && ev.name === "tool_called") {
-        const t = { type: "trace", kind: "tool", title: ev.item.rawItem.name, input: ev.item.rawItem.arguments }
-        box.traces.push(t); send(t)
-        const log = { type: "log", source: "tool", text: `tool ${t.title}` }
-        box.logs.push(log); send(log)
-      }
-      if (ev.type === "run_item_stream_event" && ev.name === "tool_approval_requested") {
-        const waitId = randomUUID()
-        waiting.set(waitId, { state: stream.state, res, chatId })
-        console.log("[stream] approval", waitId)
-        send({ type: "approval", waitId, toolName: ev.item.rawItem.name, arguments: ev.item.rawItem.arguments })
-        return
-      }
+    const result = await runner.run(demoAgent, message, { session: getSession(chatId) })
+    const interruption = result.interruptions[0]
+    if (interruption) {
+      const waitId = randomUUID()
+      waiting.set(waitId, { state: result.state, chatId })
+      const payload = approvalPayload(waitId, interruption)
+      box.logs.push({ source: "agent", text: `approval required for ${interruption.name}` })
+      return res.status(202).json(payload)
     }
-    const out = displayOutput(stream.finalOutput)
-    send({ type: "done", output: out })
-    res.end()
-  } catch (e) {
-    console.log("[stream] error", e)
-    send({ type: "error", message: "failed" })
-    res.end()
+
+    const output = displayOutput(result.finalOutput)
+    box.logs.push({ source: "agent", text: output })
+    return res.json({ status: "completed", output })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown agent error"
+    console.error("[chat] error", message)
+    return res.status(500).json({ error: "Agent request failed. Check the backend terminal for details." })
   }
+})
+
+// Retired deliberately: holding this response open while waiting for human
+// approval was the source of the stuck chat. Clients must use /api/chat.
+app.post("/api/chat/stream", (_req, res) => {
+  res.status(410).json({ error: "Streaming chat is retired. Use POST /api/chat." })
 })
 
 app.post("/api/approvals/:waitId", async (req, res) => {
@@ -82,22 +84,27 @@ app.post("/api/approvals/:waitId", async (req, res) => {
   if (!job) return res.status(404).json({ error: "wrong id" })
   const ok = req.body.decision === "approve"
   const item = job.state.getInterruptions()[0]
+  if (!item) {
+    waiting.delete(req.params.waitId)
+    return res.status(409).json({ error: "approval is no longer pending" })
+  }
   if (ok) job.state.approve(item); else job.state.reject(item)
   waiting.delete(req.params.waitId)
   try {
-    const resumed = await runner.run(demoAgent, job.state, { stream: true, session: getSession(job.chatId) })
-    for await (const ev of resumed) {
-      if (ev.type === "raw_model_stream_event" && ev.data.delta) {
-        job.res.write(JSON.stringify({ type: "chat_delta", text: ev.data.delta }) + "\n")
-      }
+    const resumed = await runner.run(demoAgent, job.state)
+    const interruption = resumed.interruptions[0]
+    if (interruption) {
+      const waitId = randomUUID()
+      waiting.set(waitId, { state: resumed.state, chatId: job.chatId })
+      return res.status(202).json(approvalPayload(waitId, interruption))
     }
-    const out = displayOutput(resumed.finalOutput)
-    job.res.write(JSON.stringify({ type: "done", output: out }) + "\n")
-    job.res.end()
-    res.json({ status: "resumed", output: out })
+    const output = displayOutput(resumed.finalOutput)
+    getBox(job.chatId).logs.push({ source: "agent", text: output })
+    return res.json({ status: "completed", output })
   } catch (e) {
-    job.res.write(JSON.stringify({ type: "error" }) + "\n"); job.res.end()
-    res.status(500).json({ error: "resume failed" })
+    const message = e instanceof Error ? e.message : "Unknown approval resume error"
+    console.error("[approval] resume error", message)
+    return res.status(500).json({ error: "Email action failed. Check the backend terminal for details." })
   }
 })
 

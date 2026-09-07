@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
+import type { PendingApproval } from "@/lib/agent-types";
 import type { LiveLogs } from "@/lib/use-live-logs";
 
 interface ChatMsg {
@@ -28,22 +29,39 @@ interface ChatPanelProps {
   className?: string;
   scrollClassName?: string;
   onStreamChat?: (message: string, onDelta: (delta: string) => void, onDone: (text: string) => void) => Promise<void>;
+  approval?: PendingApproval | null;
+  onApprove?: (id: string) => Promise<{ output?: string }>;
+  onReject?: (id: string) => Promise<{ output?: string }>;
 }
 
-export function ChatPanel({ logs, className, scrollClassName, onStreamChat }: ChatPanelProps) {
+export function ChatPanel({ logs, className, scrollClassName, onStreamChat, approval, onApprove, onReject }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMsg[]>([
     { id: "seed", role: "agent", text: "Connected. Ask about run #4821 or upload a statement CSV." },
   ]);
   const [draft, setDraft] = useState("");
   const [files, setFiles] = useState<string[]>([]);
   const [streamingId, setStreamingId] = useState<string | null>(null);
+  const [resolvingApproval, setResolvingApproval] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const messageSequence = useRef(0);
+  const nextMessageId = (role: ChatMsg["role"]) => {
+    messageSequence.current += 1;
+    return `${role}-${messageSequence.current}`;
+  };
 
   const send = async () => {
     const text = draft.trim();
     if (!text && files.length === 0) return;
+
+    // A plain-language approval belongs to the pending tool call, not to a new
+    // agent turn. This makes "yes" and "approve" work from the chat composer.
+    if (approval && /^(yes|approve|approved|yes do it|send it|go ahead)$/i.test(text) && files.length === 0) {
+      setDraft("");
+      await resolveApproval("approve");
+      return;
+    }
     const user: ChatMsg = {
-      id: `u-${Date.now()}`,
+      id: nextMessageId("user"),
       role: "user",
       text: text || "(files only)",
       files: [...files],
@@ -55,7 +73,7 @@ export function ChatPanel({ logs, className, scrollClassName, onStreamChat }: Ch
 
     // if parent gave real streaming function, use it
     if (onStreamChat) {
-      const agentId = `a-${Date.now()}`;
+      const agentId = nextMessageId("agent");
       setMessages((m) => [...m, { id: agentId, role: "agent", text: "" }]);
       setStreamingId(agentId);
       try {
@@ -89,6 +107,18 @@ export function ChatPanel({ logs, className, scrollClassName, onStreamChat }: Ch
     ]);
   };
 
+  const resolveApproval = async (decision: "approve" | "reject") => {
+    const callback = decision === "approve" ? onApprove : onReject;
+    if (!approval || !callback || resolvingApproval) return;
+    setResolvingApproval(true);
+    const result = await callback(approval.id);
+    const output = result.output;
+    if (output) {
+      setMessages((items) => [...items, { id: nextMessageId("agent"), role: "agent", text: output }]);
+    }
+    setResolvingApproval(false);
+  };
+
   // keep scroller pinned to latest message (internal scroll)
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -96,7 +126,7 @@ export function ChatPanel({ logs, className, scrollClassName, onStreamChat }: Ch
       '[data-slot="scroll-area-viewport"]',
     ) as HTMLElement | null;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages.length]);
+  }, [messages.length, approval?.id]);
 
   return (
     <Card className={`flex min-h-0 flex-1 flex-col overflow-hidden ${className ?? ""}`}>
@@ -122,6 +152,26 @@ export function ChatPanel({ logs, className, scrollClassName, onStreamChat }: Ch
                 </div>
               </div>
             ))}
+            {approval ? (
+              <div className="max-w-[85%] rounded-none border border-amber-500/50 bg-amber-500/10 px-2 py-2">
+                <p className="font-mono text-[11px] font-medium">Approval required to send email</p>
+                <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+                  {approval.summary}
+                </p>
+                <code className="mt-2 block truncate bg-background/50 px-1.5 py-1 font-mono text-[10px] text-muted-foreground">
+                  {approval.logExcerpt}
+                </code>
+                <div className="mt-2 flex gap-2">
+                  <Button size="sm" onClick={() => resolveApproval("approve")} disabled={!onApprove || resolvingApproval}>
+                    Approve & send
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => resolveApproval("reject")} disabled={!onReject || resolvingApproval}>
+                    Reject
+                  </Button>
+                </div>
+                <p className="mt-2 font-mono text-[10px] text-muted-foreground">You can also reply “yes” to approve.</p>
+              </div>
+            ) : null}
           </div>
         </ScrollArea>
 
@@ -178,7 +228,7 @@ export function ChatPanel({ logs, className, scrollClassName, onStreamChat }: Ch
             className="min-h-0 flex-1 font-mono text-xs"
             aria-label="Message agent"
           />
-          <Button size="icon-sm" onClick={send} aria-label="Send message">
+          <Button size="icon-sm" onClick={send} aria-label="Send message" disabled={Boolean(streamingId) && !approval}>
             <PaperPlaneRight data-icon="inline-start" />
           </Button>
         </div>
